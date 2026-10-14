@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>World Map Annotator</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f3f5f8; --card:#fff; --ink:#1d2430; --muted:#6b7686; --line:#dde2ea;
+    --accent:#2563eb; --accent-d:#1d4ed8; --danger:#dc2626;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:Sarabun,"Noto Sans Thai",Tahoma,"Segoe UI",sans-serif;font-size:15px;line-height:1.5}
+  .app{display:grid;grid-template-columns:380px minmax(0,1fr);gap:20px;padding:20px;max-width:1800px;margin:0 auto;align-items:start}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;position:sticky;top:20px;max-height:calc(100vh - 40px);overflow:auto}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 16px}
+  label.f{display:block;font-weight:600;margin:14px 0 6px;font-size:14px}
+  .step{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;margin-right:6px}
+  select,textarea{width:100%;font:inherit;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink)}
+  select:disabled{background:#f1f3f6;color:#9aa4b2}
+  textarea{min-height:130px;resize:vertical}
+  select:focus,textarea:focus{outline:2px solid #bfd3fb;border-color:var(--accent)}
+  button{font:inherit;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink);padding:9px 14px;border-radius:9px;transition:.15s}
+  button:hover{background:#f3f6fb;border-color:#c5cedb}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  button.primary:hover{background:var(--accent-d)}
+  button.danger{color:var(--danger)}
+  button.danger:hover{background:#fef2f2;border-color:#f3b9b9}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .row>button{flex:1 1 auto}
+  .file-btn{display:inline-block}
+  .file-btn input{display:none}
+  .thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .thumb{position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .thumb button{position:absolute;top:2px;right:2px;width:20px;height:20px;padding:0;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;border:0;font-size:13px;line-height:20px}
+  #toggleNames[aria-pressed="true"]{background:#e8f0fe;border-color:var(--accent);color:var(--accent-d);font-weight:600}
+  #toggleNames{width:100%;text-align:left;display:flex;justify-content:space-between;align-items:center}
+  .pill{font-size:12px;padding:1px 8px;border-radius:99px;background:#eceff4;color:var(--muted)}
+  #toggleNames[aria-pressed="true"] .pill{background:var(--accent);color:#fff}
+  hr{border:0;border-top:1px solid var(--line);margin:18px 0}
+  .entries{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px}
+  .entries li{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fafbfd}
+  .dot{width:12px;height:12px;border-radius:50%;flex:none}
+  .entries .nm{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .entries .meta{color:var(--muted);font-size:12px;white-space:nowrap}
+  .entries button{padding:2px 8px;font-size:16px;line-height:1.2}
+  .empty{color:var(--muted);font-size:13px;margin:8px 0 0}
+  .stage{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;overflow:auto;min-height:300px}
+  canvas{display:block;width:100%;height:auto;border-radius:8px}
+  #status{padding:40px;text-align:center;color:var(--muted)}
+  #toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);background:#1d2430;color:#fff;padding:10px 18px;border-radius:10px;opacity:0;pointer-events:none;transition:.25s;z-index:10}
+  #toast.show{opacity:1;transform:translateX(-50%)}
+  @media (max-width:980px){
+    .app{grid-template-columns:1fr}
+    .panel{position:static;max-height:none}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="panel">
+    <h1>World Map Annotator</h1>
+    <p class="sub">เลือกประเทศ ใส่ข้อความ/รูปภาพ แล้วกดประมวลผลเพื่อสร้างแผนที่พร้อมเส้นโยง</p>
+
+    <label class="f" for="continent"><span class="step">1</span>ทวีป</label>
+    <select id="continent" disabled><option value="">กำลังโหลดข้อมูล…</option></select>
+
+    <label class="f" for="country"><span class="step">2</span>ประเทศ</label>
+    <select id="country" disabled><option value="">— เลือกทวีปก่อน —</option></select>
+
+    <label class="f" for="note"><span class="step">3</span>ข้อความ (ความยาวไม่จำกัด)</label>
+    <textarea id="note" placeholder="พิมพ์ข้อความที่ต้องการแสดงคู่กับประเทศนี้…"></textarea>
+
+    <label class="f"><span class="step">4</span>รูปภาพ (ไม่บังคับ)</label>
+    <label class="file-btn"><button type="button" id="pickImg">📎 แนบรูปภาพ</button>
+      <input type="file" id="imgInput" accept="image/*" multiple>
+    </label>
+    <div class="thumbs" id="thumbs"></div>
+
+    <label class="f"><span class="step">5</span>ชื่อประเทศอื่นๆ บนแผนที่</label>
+    <button type="button" id="toggleNames" aria-pressed="false"><span>แสดงชื่อประเทศอื่นๆ</span><span class="pill">ปิด</span></button>
+
+    <div class="row"><button type="button" class="primary" id="addBtn">＋ เพิ่มประเทศ</button></div>
+
+    <ul class="entries" id="entries"></ul>
+    <p class="empty" id="emptyMsg">ยังไม่มีประเทศที่เพิ่ม</p>
+
+    <hr>
+    <div class="row">
+      <button type="button" class="primary" id="processBtn">▶ ประมวลผล</button>
+    </div>
+    <div class="row">
+      <button type="button" id="saveBtn">💾 บันทึกเป็น PNG</button>
+      <button type="button" class="danger" id="resetBtn">↺ รีเซ็ต</button>
+    </div>
+  </aside>
+
+  <main class="stage">
+    <div id="status">กำลังโหลดแผนที่…</div>
+    <canvas id="cv" hidden></canvas>
+  </main>
+</div>
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+<script>
+(() => {
+  /* ---------- Continents (country names follow the world-atlas dataset, English) ---------- */
+  const CONTINENTS = {
+    asia:{label:'เอเชีย',names:['Afghanistan','Armenia','Azerbaijan','Bahrain','Bangladesh','Bhutan','Brunei','Cambodia','China','Cyprus','Georgia','Hong Kong','India','Indonesia','Iran','Iraq','Israel','Japan','Jordan','Kazakhstan','Kuwait','Kyrgyzstan','Laos','Lebanon','Macao','Malaysia','Maldives','Mongolia','Myanmar','N. Cyprus','Nepal','North Korea','Oman','Pakistan','Palestine','Philippines','Qatar','Russia','Saudi Arabia','Singapore','South Korea','Sri Lanka','Syria','Taiwan','Tajikistan','Thailand','Timor-Leste','Turkey','Turkmenistan','United Arab Emirates','Uzbekistan','Vietnam','Yemen']},
+    europe:{label:'ยุโรป',names:['Albania','Andorra','Austria','Belarus','Belgium','Bosnia and Herz.','Bulgaria','Croatia','Cyprus','Czechia','Denmark','Estonia','Faeroe Is.','Finland','France','Germany','Greece','Guernsey','Hungary','Iceland','Ireland','Isle of Man','Italy','Jersey','Kosovo','Latvia','Liechtenstein','Lithuania','Luxembourg','Malta','Moldova','Monaco','Montenegro','Netherlands','North Macedonia','Norway','Poland','Portugal','Romania','Russia','San Marino','Serbia','Slovakia','Slovenia','Spain','Sweden','Switzerland','Turkey','Ukraine','United Kingdom','Vatican','Åland']},
+    africa:{label:'แอฟริกา',names:['Algeria','Angola','Benin','Botswana','Burkina Faso','Burundi','Cabo Verde','Cameroon','Central African Rep.','Chad','Comoros','Congo','Dem. Rep. Congo','Djibouti','Egypt','Eq. Guinea','Eritrea','eSwatini','Ethiopia','Gabon','Gambia','Ghana','Guinea','Guinea-Bissau','Kenya','Lesotho','Liberia','Libya','Madagascar','Malawi','Mali','Mauritania','Mauritius','Morocco','Mozambique','Namibia','Niger','Nigeria','Rwanda','S. Sudan','Senegal','Seychelles','Sierra Leone','Somalia','Somaliland','South Africa','Sudan','São Tomé and Principe','Tanzania','Togo','Tunisia','Uganda','W. Sahara','Zambia','Zimbabwe',"Côte d'Ivoire"]},
+    namerica:{label:'อเมริกาเหนือ',names:['Anguilla','Antigua and Barb.','Aruba','Bahamas','Barbados','Belize','Bermuda','Br. Virgin Is.','Canada','Cayman Is.','Costa Rica','Cuba','Curaçao','Dominica','Dominican Rep.','El Salvador','Greenland','Grenada','Guatemala','Haiti','Honduras','Jamaica','Mexico','Montserrat','Nicaragua','Panama','Puerto Rico','Saint Lucia','Sint Maarten','St-Barthélemy','St-Martin','St. Kitts and Nevis','St. Pierre and Miquelon','St. Vin. and Gren.','Trinidad and Tobago','Turks and Caicos Is.','U.S. Virgin Is.','United States of America']},
+    samerica:{label:'อเมริกาใต้',names:['Argentina','Bolivia','Brazil','Chile','Colombia','Ecuador','Falkland Is.','Guyana','Paraguay','Peru','Suriname','Uruguay','Venezuela']},
+    oceania:{label:'โอเชียเนีย',names:['American Samoa','Australia','Cook Is.','Fiji','Fr. Polynesia','Guam','Kiribati','Marshall Is.','Micronesia','N. Mariana Is.','Nauru','New Caledonia','New Zealand','Niue','Norfolk Island','Palau','Papua New Guinea','Pitcairn Is.','Samoa','Solomon Is.','Tonga','Tuvalu','Vanuatu','Wallis and Futuna Is.']},
+    antarctica:{label:'แอนตาร์กติกา',names:['Antarctica','Fr. S. Antarctic Lands']}
+  };
+
+  const FONT = "Sarabun, 'Noto Sans Thai', Tahoma, 'Segoe UI', sans-serif";
+  const PALETTE = ['#e4572e','#2e86ab','#3bb273','#9b5de5','#f2a900','#d81e5b','#00a6a6','#6c757d'];
+  const FOCUS_COLOR = '#2563eb';
+  const WATER = '#e8f2fa', LAND = '#d9e0e8';
+
+  // result layout constants (logical px)
+  const RW = 1600, COL_W = 340, MARGIN = 20, MAP_X = 400, MAP_W = 800, GAP = 24;
+
+  /* ---------- DOM ---------- */
+  const $ = id => document.getElementById(id);
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const contSel = $('continent'), countrySel = $('country'), note = $('note');
+  const scratch = document.createElement('canvas').getContext('2d');
+
+  /* ---------- State ---------- */
+  let features = [], byName = new Map(), byContinent = {};
+  let entries = [];         // {name,text,images:[{src,img}],color}
+  let pending = [];         // images for the form
+  let showNames = false;
+  let mode = 'preview';     // 'preview' | 'result'
+  let colorCounter = 0;
+
+  const SEG = (typeof Intl !== 'undefined' && Intl.Segmenter) ? new Intl.Segmenter('th', {granularity:'word'}) : null;
+
+  /* ---------- Helpers ---------- */
+  function toast(msg){
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+  function rr(c,x,y,w,h,r){
+    c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
+    c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath();
+  }
+  function wrapText(c, text, maxW){
+    const out = [];
+    for (const para of String(text).split(/\r?\n/)){
+      if (!para.trim()){ out.push(''); continue; }
+      const segs = SEG ? Array.from(SEG.segment(para), s => s.segment) : para.split(/(?<=\s)/);
+      let line = '';
+      for (const s of segs){
+        const t = line + s;
+        if (line && c.measureText(t.trimEnd()).width > maxW){
+          out.push(line.trimEnd()); line = s.replace(/^\s+/, '');
+        } else line = t;
+      }
+      out.push(line.trimEnd());
+    }
+    const res = [];
+    for (let l of out){
+      while (l && c.measureText(l).width > maxW){
+        const chars = Array.from(l); let k = chars.length;
+        while (k > 1 && c.measureText(chars.slice(0,k).join('')).width > maxW) k--;
+        res.push(chars.slice(0,k).join('')); l = chars.slice(k).join('');
+      }
+      res.push(l);
+    }
+    return res;
+  }
+
+  /* ---------- Data loading ---------- */
+  async function init(){
+    try {
+      const world = await d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json');
+      features = topojson.feature(world, world.objects.countries).features.filter(f => f.properties && f.properties.name);
+    } catch (e) {
+      $('status').textContent = 'โหลดข้อมูลแผนที่ไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วรีเฟรชหน้า';
+      return;
+    }
+    features.forEach(f => {
+      f.name = f.properties.name; byName.set(f.name, f);
+      const g = f.geometry;
+      const polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
+      const items = polys.map(c => { const geom = {type:'Polygon',coordinates:c}; return {geom, area:d3.geoArea(geom), cen:d3.geoCentroid(geom)}; });
+      items.sort((a,b) => b.area - a.area);
+      const total = d3.sum(items, d => d.area) || 1, main = items[0];
+      const keep = items.filter((it,i) => i === 0 || (it.area/total >= 0.03 && d3.geoDistance(main.cen, it.cen) <= 0.6));
+      f._main = main.geom;
+      f._fit = {type:'MultiPolygon', coordinates: keep.map(k => k.geom.coordinates)};
+    });
+
+    // continent lists
+    const assigned = new Set();
+    for (const [k,def] of Object.entries(CONTINENTS)){
+      byContinent[k] = def.names.filter(n => byName.has(n)).sort((a,b) => a.localeCompare(b));
+      byContinent[k].forEach(n => assigned.add(n));
+    }
+    const others = features.map(f => f.name).filter(n => !assigned.has(n)).sort((a,b) => a.localeCompare(b));
+    if (others.length) byContinent.other = others;
+
+    contSel.innerHTML = '<option value="">— เลือกทวีป —</option>' +
+      Object.keys(CONTINENTS).filter(k => byContinent[k].length).map(k => `<option value="${k}">${CONTINENTS[k].label}</option>`).join('') +
+      (byContinent.other ? '<option value="other">ดินแดนอื่นๆ</option>' : '');
+    contSel.disabled = false;
+
+    try { await Promise.all([document.fonts.load(`400 18px Sarabun`,'ไทยAa'), document.fonts.load(`700 24px Sarabun`,'ไทยAa')]); } catch(e){}
+    $('status').hidden = true; cv.hidden = false;
+    draw();
+  }
+
+  /* ---------- Box measuring & drawing ---------- */
+  function measureBox(e){
+    const inner = COL_W - 32;
+    scratch.font = `700 24px ${FONT}`;
+    const titleLines = wrapText(scratch, e.name, inner);
+    scratch.font = `400 18px ${FONT}`;
+    const lines = e.text ? wrapText(scratch, e.text, inner) : [];
+    let h = 16 + titleLines.length * 30 + 6;
+    if (lines.length) h += lines.length * 27 + 8;
+    const imgs = [], n = e.images.length;
+    if (n){
+      let y = h;
+      if (n === 1){
+        const im = e.images[0].img;
+        let dw = inner, dh = dw * im.naturalHeight / im.naturalWidth;
+        if (dh > 420){ dh = 420; dw = dh * im.naturalWidth / im.naturalHeight; }
+        imgs.push({im, x:(inner-dw)/2, y, w:dw, h:dh}); y += dh;
+      } else {
+        const cw = (inner - 10) / 2;
+        for (let i = 0; i < n; i += 2){
+          let rowH = 0;
+          for (let j = 0; j < 2 && i + j < n; j++){
+            const im = e.images[i+j].img;
+            let dw = cw, dh = dw * im.naturalHeight / im.naturalWidth;
+            if (dh > 300){ dh = 300; dw = dh * im.naturalWidth / im.naturalHeight; }
+            imgs.push({im, x: j*(cw+10) + (cw-dw)/2, y, w:dw, h:dh}); rowH = Math.max(rowH, dh);
+          }
+          y += rowH + 10;
+        }
+        y -= 10;
+      }
+      h = y + 16;
+    } else h += 8;
+    return {h, titleLines, lines, imgs};
+  }
+
+  function drawBox(c, it, x, y){
+    const {e, m} = it;
+    c.save();
+    c.shadowColor = 'rgba(0,0,0,.18)'; c.shadowBlur = 14; c.shadowOffsetY = 3;
+    c.fillStyle = '#fff'; rr(c, x, y, COL_W, m.h, 12); c.fill();
+    c.restore();
+    c.lineWidth = 3; c.strokeStyle = e.color; rr(c, x, y, COL_W, m.h, 12); c.stroke();
+    c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+    let ty = y + 16;
+    c.fillStyle = e.color; c.font = `700 24px ${FONT}`;
+    m.titleLines.forEach(l => { c.fillText(l, x+16, ty+23); ty += 30; });
+    ty += 6;
+    if (m.lines.length){
+      c.fillStyle = '#222'; c.font = `400 18px ${FONT}`;
+      m.lines.forEach(l => { c.fillText(l, x+16, ty+19); ty += 27; });
+    }
+    m.imgs.forEach(p => {
+      c.save(); rr(c, x+16+p.x, y+p.y, p.w, p.h, 8); c.clip();
+      c.drawImage(p.im, x+16+p.x, y+p.y, p.w, p.h); c.restore();
+    });
+  }
+
+  /* ---------- Projection ---------- */
+  function fitSel(sel, pnl){
+    const proj = d3.geoNaturalEarth1();
+    const fc = {type:'FeatureCollection', features: sel.map(f => ({type:'Feature', geometry:f._fit}))};
+    const pad = 30;
+    proj.fitExtent([[pnl.x+pad, pnl.y+pad],[pnl.x+pnl.w-pad, pnl.y+pnl.h-pad]], fc);
+    const MAX = 25000;
+    if (proj.scale() > MAX){
+      const c = d3.geoCentroid(fc);
+      proj.rotate([-c[0], -c[1]]).center([0,0]).scale(MAX).translate([pnl.x+pnl.w/2, pnl.y+pnl.h/2]);
+    }
+    return proj;
+  }
+
+  /* ---------- Main draw ---------- */
+  function draw(){
+    if (!features.length) return;
+    const result = mode === 'result' && entries.length > 0;
+    let W, H, panel, proj, items = [];
+    const colorMap = new Map();
+
+    if (!result){
+      W = 1200; H = 640; panel = {x:20, y:20, w:W-40, h:H-40};
+      proj = d3.geoNaturalEarth1().fitExtent([[panel.x+10,panel.y+10],[panel.x+panel.w-10,panel.y+panel.h-10]], {type:'Sphere'});
+      entries.forEach(e => colorMap.set(e.name, e.color));
+      if (countrySel.value && !colorMap.has(countrySel.value)) colorMap.set(countrySel.value, FOCUS_COLOR);
+    } else {
+      W = RW;
+      const sel = entries.map(e => byName.get(e.name));
+      let hh = 900;
+      panel = {x:MAP_X, y:20, w:MAP_W, h:hh-40};
+      proj = fitSel(sel, panel);
+      let path = d3.geoPath(proj);
+      items = entries.map((e,i) => ({e, f:sel[i], m:measureBox(e), a:path.centroid(sel[i]._main)}));
+      const sorted = [...items].sort((a,b) => a.a[0] - b.a[0]);
+      if (items.length === 1) sorted[0].side = sorted[0].a[0] < MAP_X + MAP_W/2 ? 'L' : 'R';
+      else { const nl = Math.ceil(items.length/2); sorted.forEach((it,i) => it.side = i < nl ? 'L' : 'R'); }
+      const col = s => items.filter(i => i.side === s);
+      const colH = s => { const c = col(s); return c.reduce((t,i) => t + i.m.h, 0) + Math.max(0, c.length-1) * GAP; };
+      hh = Math.max(900, colH('L') + 80, colH('R') + 80);
+      H = hh; panel = {x:MAP_X, y:20, w:MAP_W, h:H-40};
+      proj = fitSel(sel, panel); path = d3.geoPath(proj);
+      items.forEach(it => it.a = path.centroid(it.f._main));
+      ['L','R'].forEach(s => {
+        const c = col(s).sort((a,b) => a.a[1] - b.a[1]);
+        let y = (H - colH(s)) / 2;
+        c.forEach(it => { it.x = s === 'L' ? MARGIN : W - MARGIN - COL_W; it.y = y; y += it.m.h + GAP; });
+      });
+      entries.forEach(e => colorMap.set(e.name, e.color));
+    }
+
+    const ratio = Math.min(2, 16000 / Math.max(W, H));
+    cv.width = Math.round(W*ratio); cv.height = Math.round(H*ratio);
+    ctx.setTransform(ratio,0,0,ratio,0,0);
+    ctx.fillStyle = '#fff'; ctx.fillRect(0,0,W,H);
+
+    // map panel
+    ctx.save();
+    rr(ctx, panel.x, panel.y, panel.w, panel.h, 14); ctx.clip();
+    ctx.fillStyle = WATER; ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
+    const gp = d3.geoPath(proj, ctx);
+    ctx.lineWidth = 0.6; ctx.strokeStyle = '#fff'; ctx.lineJoin = 'round';
+    features.forEach(f => {
+      if (colorMap.has(f.name)) return;
+      ctx.beginPath(); gp(f); ctx.fillStyle = LAND; ctx.fill(); ctx.stroke();
+    });
+    features.forEach(f => {
+      if (!colorMap.has(f.name)) return;
+      ctx.beginPath(); gp(f); ctx.fillStyle = colorMap.get(f.name); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.stroke(); ctx.strokeStyle = '#fff';
+    });
+
+    // other country names
+    const pm = d3.geoPath(proj);
+    if (showNames){
+      const fs = result ? 15 : 12, placed = [];
+      ctx.font = `400 ${fs}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.lineWidth = 3; ctx.lineJoin = 'round';
+      const cand = features.filter(f => !colorMap.has(f.name))
+        .map(f => ({f, area: pm.area(f._main)})).filter(c => c.area > 0).sort((a,b) => b.area - a.area);
+      for (const c of cand){
+        const [cx, cy] = pm.centroid(c.f._main);
+        if (!isFinite(cx) || cx < panel.x || cx > panel.x+panel.w || cy < panel.y || cy > panel.y+panel.h) continue;
+        const tw = ctx.measureText(c.f.name).width;
+        if (c.area < tw * fs * 1.2) continue;
+        const bx = {x:cx-tw/2-2, y:cy-fs/2, w:tw+4, h:fs};
+        if (placed.some(p => bx.x < p.x+p.w && bx.x+bx.w > p.x && bx.y < p.y+p.h && bx.y+bx.h > p.y)) continue;
+        placed.push(bx);
+        ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(c.f.name, cx, cy);
+        ctx.fillStyle = '#4a5560'; ctx.fillText(c.f.name, cx, cy);
+      }
+    }
+    // preview focus label
+    if (!result && countrySel.value){
+      const f = byName.get(countrySel.value);
+      const [cx, cy] = pm.centroid(f._main);
+      if (isFinite(cx)){
+        ctx.font = `700 14px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.lineWidth = 3.5; ctx.strokeStyle = '#fff'; ctx.strokeText(f.name, cx, cy - 12);
+        ctx.fillStyle = '#111'; ctx.fillText(f.name, cx, cy - 12);
+      }
+    }
+    ctx.restore();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = '#c5cfdb'; rr(ctx, panel.x, panel.y, panel.w, panel.h, 14); ctx.stroke();
+
+    // leader lines + boxes
+    if (result){
+      items.forEach(it => {
+        const sx = it.side === 'L' ? it.x + COL_W : it.x;
+        const sy = it.y + Math.min(it.m.h/2, 50);
+        const [ax, ay] = it.a, mx = sx + (ax - sx) * 0.5;
+        ctx.lineWidth = 2.5; ctx.strokeStyle = it.e.color; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.bezierCurveTo(mx, sy, mx, ay, ax, ay); ctx.stroke();
+        ctx.fillStyle = it.e.color;
+        ctx.beginPath(); ctx.arc(sx, sy, 4, 0, 7); ctx.fill();
+        ctx.beginPath(); ctx.arc(ax, ay, 6.5, 0, 7); ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.arc(ax, ay, 6.5, 0, 7); ctx.stroke();
+      });
+      items.forEach(it => drawBox(ctx, it, it.x, it.y));
+    }
+  }
+
+  /* ---------- UI: form ---------- */
+  contSel.addEventListener('change', () => {
+    const list = byContinent[contSel.value] || [];
+    countrySel.innerHTML = list.length
+      ? '<option value="">— เลือกประเทศ —</option>' + list.map(n => `<option value="${n.replace(/"/g,'&quot;')}">${n}</option>`).join('')
+      : '<option value="">— เลือกทวีปก่อน —</option>';
+    countrySel.disabled = !list.length;
+    mode = 'preview'; draw();
+  });
+  countrySel.addEventListener('change', () => { mode = 'preview'; draw(); });
+
+  $('pickImg').addEventListener('click', () => $('imgInput').click());
+  $('imgInput').addEventListener('change', async ev => {
+    const files = [...ev.target.files].filter(f => f.type.startsWith('image/'));
+    ev.target.value = '';
+    for (const file of files){
+      try {
+        const src = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+        const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
+        pending.push({src, img});
+      } catch(e){ toast('อ่านไฟล์รูปภาพไม่สำเร็จ: ' + file.name); }
+    }
+    renderThumbs();
+  });
+  function renderThumbs(){
+    const box = $('thumbs'); box.innerHTML = '';
+    pending.forEach((p, i) => {
+      const d = document.createElement('div'); d.className = 'thumb';
+      d.innerHTML = `<img src="${p.src}" alt=""><button type="button" title="ลบ">×</button>`;
+      d.querySelector('button').onclick = () => { pending.splice(i,1); renderThumbs(); };
+      box.appendChild(d);
+    });
+  }
+
+  $('toggleNames').addEventListener('click', ev => {
+    showNames = !showNames;
+    const b = ev.currentTarget; b.setAttribute('aria-pressed', showNames);
+    b.querySelector('.pill').textContent = showNames ? 'เปิด' : 'ปิด';
+    draw();
+  });
+
+  function addEntry(silent){
+    const name = countrySel.value;
+    if (!name){ if (!silent) toast('กรุณาเลือกทวีปและประเทศก่อน'); return false; }
+    if (entries.some(e => e.name === name)){ if (!silent) toast(`เพิ่ม ${name} ไปแล้ว`); return false; }
+    entries.push({name, text: note.value.trim(), images: pending.slice(), color: PALETTE[colorCounter++ % PALETTE.length]});
+    note.value = ''; pending = []; renderThumbs();
+    countrySel.value = '';
+    renderEntries(); mode = 'preview'; draw();
+    if (!silent) toast(`เพิ่ม ${name} แล้ว`);
+    return true;
+  }
+  $('addBtn').addEventListener('click', () => addEntry(false));
+
+  function renderEntries(){
+    const ul = $('entries'); ul.innerHTML = '';
+    $('emptyMsg').hidden = entries.length > 0;
+    entries.forEach((e, i) => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="dot" style="background:${e.color}"></span><span class="nm"></span><span class="meta"></span><button type="button" title="ลบ">×</button>`;
+      li.querySelector('.nm').textContent = e.name;
+      li.querySelector('.meta').textContent = `${e.text ? 'ข้อความ' : 'ไม่มีข้อความ'} · ${e.images.length} รูป`;
+      li.querySelector('button').onclick = () => { entries.splice(i,1); renderEntries(); mode = 'preview'; draw(); };
+      ul.appendChild(li);
+    });
+  }
+
+  /* ---------- Process / Save / Reset ---------- */
+  $('processBtn').addEventListener('click', () => {
+    if (countrySel.value) addEntry(true);   // include the country currently being edited
+    if (!entries.length){ toast('กรุณาเลือกประเทศอย่างน้อย 1 ประเทศ'); return; }
+    mode = 'result'; draw();
+    cv.scrollIntoView({behavior:'smooth', block:'start'});
+  });
+
+  $('saveBtn').addEventListener('click', () => {
+    if (!features.length) return;
+    cv.toBlob(b => {
+      if (!b){ toast('บันทึกภาพไม่สำเร็จ'); return; }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(b); a.download = `world-map-${Date.now()}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    }, 'image/png');
+  });
+
+  $('resetBtn').addEventListener('click', () => {
+    if ((entries.length || note.value || pending.length) && !confirm('ล้างข้อมูลทั้งหมดและเริ่มใหม่?')) return;
+    entries = []; pending = []; colorCounter = 0; showNames = false; mode = 'preview';
+    note.value = ''; contSel.value = '';
+    countrySel.innerHTML = '<option value="">— เลือกทวีปก่อน —</option>'; countrySel.disabled = true;
+    const b = $('toggleNames'); b.setAttribute('aria-pressed','false'); b.querySelector('.pill').textContent = 'ปิด';
+    renderThumbs(); renderEntries(); draw();
+  });
+
+  renderEntries();
+  init();
+})();
+</script>
+</body>
+</html>
